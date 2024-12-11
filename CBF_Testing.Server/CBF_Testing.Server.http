@@ -1,0 +1,6 @@
+@CBF_Testing.Server_HostAddress = http://localhost:5288
+
+GET {{CBF_Testing.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
