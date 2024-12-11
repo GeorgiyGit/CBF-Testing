@@ -15,5 +15,7 @@ namespace CBF_Testing.Domain.Entities
 
         public Anime Anime { get; set; }
         public int AnimeId { get; set; }
+
+        public int Rating { get; set; }
     }
 }
