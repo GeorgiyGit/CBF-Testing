@@ -12,7 +12,7 @@ namespace CBF_Testing.Infrastructure
     public class CBFTestingDbContext : DbContext
     {
         public DbSet<Anime> Animes { get; set; }
-        public DbSet<AnimeType> AnimeType { get; set; }
+        public DbSet<AnimeType> AnimeTypes { get; set; }
         public DbSet<Genre> Genres { get; set; }
         public DbSet<RatingFeedback> RatingFeedbacks { get; set; }
         public DbSet<ViewFeedback> ViewFeedbacks { get; set; }
