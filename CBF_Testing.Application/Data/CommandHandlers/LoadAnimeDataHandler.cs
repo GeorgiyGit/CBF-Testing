@@ -3,6 +3,7 @@ using CBF_Testing.Domain.Entities;
 using CBF_Testing.Infrastructure;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using System.Reflection;
 
 namespace CBF_Testing.Application.Data.CommandHandlers
@@ -12,8 +13,8 @@ namespace CBF_Testing.Application.Data.CommandHandlers
         private readonly CBFTestingDbContext _dbContext = dbContext;
         public async Task<bool> Handle(LoadAnimeData request, CancellationToken cancellationToken)
         {
-            var cPath = System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
-            var fullPath = Path.Combine(cPath, "anime\\anime_info.dat");
+            var cPath = Directory.GetCurrentDirectory();
+            var fullPath = Path.Combine(cPath, "anime/anime_info.dat");
 
             var lines = File.ReadLines(fullPath).ToList();
             for (int i = 1; i < lines.Count; i++)
@@ -27,7 +28,7 @@ namespace CBF_Testing.Application.Data.CommandHandlers
                 string genresStr = parts[2];
                 string typeName = parts[3];
                 int episodes = int.Parse(parts[4]);
-                double rating = double.Parse(parts[5]);
+                double rating = double.Parse(parts[5], CultureInfo.InvariantCulture);
                 int members = int.Parse(parts[6]);
 
                 if ((await _dbContext.Animes.FindAsync(animeId, cancellationToken)) == null)

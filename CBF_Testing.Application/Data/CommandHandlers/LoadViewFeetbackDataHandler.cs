@@ -18,8 +18,8 @@ namespace CBF_Testing.Application.Data.CommandHandlers
 
         public async Task<bool> Handle(LoadViewFeetbackData request, CancellationToken cancellationToken)
         {
-            var cPath = System.IO.Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
-            var fullPath = Path.Combine(cPath, "anime\\anime_history.dat");
+            var cPath = Directory.GetCurrentDirectory();
+            var fullPath = Path.Combine(cPath, "anime/anime_history.dat");
 
             var lines = File.ReadLines(fullPath).ToList();
             for (int i = 1; i < lines.Count; i++)

@@ -1,10 +1,21 @@
+using CBF_Testing.Application.Data.Commands;
+using CBF_Testing.Application.MappingProfiles;
+using CBF_Testing.Infrastructure;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using System;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.AddServiceDefaults();
-
-// Add services to the container.
+builder.Services.AddDbContext<CBFTestingDbContext>(options =>
+        options.UseSqlite("Data Source=Anime.db"));
 
 builder.Services.AddControllers();
+
+builder.Services.AddAutoMapper(typeof(AllMappingProfiles).Assembly);
+builder.Services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblies(typeof(LoadAllData).Assembly));
+
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();

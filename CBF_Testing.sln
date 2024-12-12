@@ -17,6 +17,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CBF_Testing.Infrastructure"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CBF_Testing.Application", "CBF_Testing.Application\CBF_Testing.Application.csproj", "{6AE19937-EC4C-4BC2-AA62-69B664C20C76}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "anime", "anime", "{BD807D59-C435-40F7-A8D7-3098C48A18CE}"
+	ProjectSection(SolutionItems) = preProject
+		anime\anime_history.dat = anime\anime_history.dat
+		anime\anime_info.dat = anime\anime_info.dat
+		anime\anime_ratings.dat = anime\anime_ratings.dat
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
