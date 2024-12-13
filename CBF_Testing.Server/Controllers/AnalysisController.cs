@@ -23,6 +23,26 @@ namespace CBF_Testing.Server.Controllers
             return Ok(res);
         }
 
+        [HttpGet]
+        [Route("KNN_analysis")]
+        public async Task<IActionResult> KNNAnalysis()
+        {
+            var res = await _mediator.Send(new KNNAnalysis()
+            {
+            });
+            return Ok(res);
+        }
+
+        [HttpGet]
+        [Route("Random_analysis")]
+        public async Task<IActionResult> RandomAnalysis()
+        {
+            var res = await _mediator.Send(new RandomAnalysis()
+            {
+            });
+            return Ok(res);
+        }
+
         [HttpPost]
         [Route("load_data")]
         public async Task<IActionResult> LoadData()

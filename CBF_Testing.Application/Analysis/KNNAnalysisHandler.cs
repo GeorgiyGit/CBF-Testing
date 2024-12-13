@@ -1,49 +1,52 @@
-﻿using Accord.MachineLearning.DecisionTrees;
-using Accord.MachineLearning.DecisionTrees.Learning;
-using Accord.Math;
+﻿using Accord.MachineLearning.DecisionTrees.Learning;
+using Accord.MachineLearning.DecisionTrees;
 using Accord.Math.Optimization.Losses;
 using Accord.Statistics.Filters;
 using CBF_Testing.Domain.DTOs.Analysis;
 using CBF_Testing.Domain.Entities;
 using CBF_Testing.Infrastructure;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Diagnostics;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
+using Accord.Math;
+using Accord.MachineLearning;
+using Accord.Math.Distances;
+using Accord.Math.Metrics;
+using Accord.Collections;
+using System.Diagnostics;
 
 namespace CBF_Testing.Application.Analysis
 {
-    public class DecisionTreeAnalysisHandler(CBFTestingDbContext dbContext) : IRequestHandler<DecisionTreeAnalysis, DTResponse>
+    public class KNNAnalysisHandler(CBFTestingDbContext dbContext) : IRequestHandler<KNNAnalysis, DTResponse>
     {
         private readonly CBFTestingDbContext _dbContext = dbContext;
 
-        public async Task<DTResponse> Handle(DecisionTreeAnalysis request, CancellationToken cancellationToken)
+        public async Task<DTResponse> Handle(KNNAnalysis request, CancellationToken cancellationToken)
         {
             double percents = 0.7;
             var users = await _dbContext.Users.Take(100)
                                               .Include(e => e.RatingFeedbacks)
                                                 .ThenInclude(e => e.Anime)
-                                                    .ThenInclude(e=>e.Type)
-                                              .Include(e=>e.RatingFeedbacks)
-                                                .ThenInclude(e=>e.Anime)
-                                                    .ThenInclude(e=>e.Genres)
+                                                    .ThenInclude(e => e.Type)
+                                              .Include(e => e.RatingFeedbacks)
+                                                .ThenInclude(e => e.Anime)
+                                                    .ThenInclude(e => e.Genres)
                                               .ToListAsync(cancellationToken);
 
-            var genres = await _dbContext.Genres.Select(e=>e.Name).ToArrayAsync(cancellationToken);
+            var genres = await _dbContext.Genres.Select(e => e.Name).ToArrayAsync(cancellationToken);
 
             List<double> RSME_All = new List<double>(users.Count);
+            List<double> RSME_10_All = new List<double>(users.Count);
             List<double> F1Score_All = new List<double>(users.Count);
+            List<double> F110Score_All = new List<double>(users.Count);
 
             List<long> buildTimes = new List<long>();
             List<long> predictTimes = new List<long>();
-            
+
             foreach (var user in users)
             {
                 Stopwatch buildwatch = Stopwatch.StartNew();
@@ -63,6 +66,19 @@ namespace CBF_Testing.Application.Analysis
                 {
                     if (output.Contains(i + 1)) allowedRatings[i] = true;
                 }
+                Dictionary<int, int> convertedRatings = new Dictionary<int, int>();
+                Dictionary<int, int> convertedRatings2 = new Dictionary<int, int>();
+
+                int j = 0;
+                for (int i = 0; i < 10; i++)
+                {
+                    if (allowedRatings[i])
+                    {
+                        convertedRatings.Add(j, i + 1);
+                        convertedRatings2.Add(i + 1, j);
+                        j++;
+                    }
+                }
 
                 List<string> possibleGenres = new List<string>();
                 double[][] oneHotGenres = OneHotEncodeGenres(trainingData, possibleGenres);
@@ -75,52 +91,37 @@ namespace CBF_Testing.Application.Analysis
                     a.Members
                 }).ToArray();
 
-
-                // Step 4: Combine features (genres + other features)
-                double[][] inputs = CombineFeatures(otherFeatures, oneHotGenres);
-
                 // Step 5: Encode categorical features (e.g., Type)
                 string[] types = trainingData.Select(a => a.Type.Name).ToArray();
                 Codification codebook = new Codification("Type", types);
                 int[] encodedTypes = codebook.Transform("Type", types);
 
                 // Add encoded Type to inputs
+
+                //double[][] normalizedFeatures = NormalizeFeatures(otherFeatures);
+
+                double[][] inputItems = NormalizeFeatures(otherFeatures);
                 if (!encodedTypes.All(e => e == encodedTypes[0]))
                 {
-                    inputs = AddColumnToInputs(inputs, encodedTypes);
+                    inputItems = AddColumnToInputs(inputItems, encodedTypes);
                 }
 
-                // Step 6: Train the C4.5 Decision Tree
-                var teacher = new C45Learning();
 
-                for(int i = 0; i < inputs[0].Length; i++)
+                // Combine features (Genres + Normalized Numerical Features)
+                double[][] inputFeatures = CombineFeatures(inputItems, oneHotGenres);
+
+
+                int[] convertedOutputs = new int[output.Length];
+                for(int i = 0; i < output.Length; i++)
                 {
-                    var flag = true;
-                    var f = inputs[0][i];
-                    for(int j = 0; j < inputs.Length; j++)
-                    {
-                        if (inputs[j][i] != f)
-                        {
-                            flag = false;
-                            break;
-                        }
-                    }
-                    if(flag)
-                    {
-                        Console.WriteLine("All elements in column are equal");
-                    }
+                    convertedOutputs[i] = convertedRatings2[output[i]];
                 }
 
-                DecisionTree tree = teacher.Learn(inputs, output);
-
+                var knn = new KNearestNeighbors(k: 3, distance: new Accord.Math.Distances.Manhattan());
+                knn.Learn(inputFeatures, convertedOutputs);
                 buildwatch.Stop();
 
                 Stopwatch predictwatch = Stopwatch.StartNew();
-                // Step 7: Evaluate the model
-                double error = new ZeroOneLoss(output).Loss(tree.Decide(inputs));
-                Console.WriteLine($"Accuracy: {1.0 - error}");
-
-
                 var testData = ratings.Skip(index).ToList();
                 if (testData.Count <= 1) continue;
                 var testAnime = testData.Select(e => e.Anime).ToList();
@@ -149,19 +150,26 @@ namespace CBF_Testing.Application.Analysis
                 }).ToArray();
 
                 // Step 4: Combine features (genres + other features)
-                double[][] testInputs = CombineFeatures(testOtherFeatures, testOneHotGenres);
-
                 string[] testTypes = testAnime.Select(a => a.Type.Name).ToArray();
                 Codification testCodebook = new Codification("Type", testTypes);
                 int[] testEncodedTypes = codebook.Transform("Type", testTypes);
 
                 // Add encoded Type to inputs
-                testInputs = AddColumnToInputs(testInputs, testEncodedTypes);
+                double[][] testNormalizedFeatures = NormalizeFeatures(testOtherFeatures);
+
+                if (!encodedTypes.All(e => e == encodedTypes[0]))
+                {
+                    testNormalizedFeatures = AddColumnToInputs(testNormalizedFeatures, testEncodedTypes);
+                }
+                testNormalizedFeatures = CombineFeatures(testNormalizedFeatures, testOneHotGenres);
 
                 List<int> predictions = new List<int>(testData.Count);
                 for (int i = 0; i < testAnime.Count; i++)
                 {
-                    predictions.Add(tree.Decide(testInputs[i]));
+                    int res = 0;
+                    res = knn.Decide(testNormalizedFeatures[i]);
+  
+                    predictions.Add(convertedRatings[res]);
                 }
 
                 var actualCategories = testOutput.Select(r => ConvertRatingToCategory(r)).ToArray();
@@ -171,14 +179,18 @@ namespace CBF_Testing.Application.Analysis
                 int[] rsmePredictedCategories = predictions.Select(r => ConvertRatingTo3(r)).ToArray();
 
                 int sum = 0;
+                int sum10 = 0;
                 for (int i = 0; i < predictions.Count; i++)
                 {
                     int v = rsmeActualCategories[i] - rsmePredictedCategories[i];
                     v = v * v;
                     sum += v;
+
+                    int v2 = testOutput[i] - predictions[i];
+                    v2 = v2 * v2;
+                    sum10 += v2;
                 }
                 predictwatch.Stop();
-
 
                 buildTimes.Add(buildwatch.ElapsedMilliseconds);
                 predictTimes.Add(predictwatch.ElapsedMilliseconds);
@@ -186,19 +198,62 @@ namespace CBF_Testing.Application.Analysis
                 double RSME = Math.Sqrt((double)sum / (double)predictions.Count);
                 RSME_All.Add(RSME);
 
+                double RSME10 = Math.Sqrt((double)sum10 / (double)predictions.Count);
+                RSME_10_All.Add(RSME10);
+
                 double f1Score = CalculateF1Score(actualCategories, predictedCategories);
-                //double f1Score = CalculateF1FullScore(testOutput, predictions.ToArray());
+                double f110Score = CalculateF1FullScore(testOutput, predictions.ToArray());
                 F1Score_All.Add(f1Score);
+                F110Score_All.Add(f110Score);
             }
             double totalRSME = RSME_All.Sum() / RSME_All.Count;
             double totalF1Score = F1Score_All.Sum() / F1Score_All.Count;
+
+            double totalRSME10 = RSME_10_All.Sum() / RSME_10_All.Count;
+            double totalF1Score10 = F110Score_All.Sum() / F110Score_All.Count;
+
             return new DTResponse()
             {
                 RSME = totalRSME,
                 F1Score = totalF1Score,
+                F110Score = totalF1Score10,
+                RSME10 = totalRSME10,
                 BuildTime = new TimeSpan(buildTimes.Max()),
                 PredictTime = new TimeSpan(predictTimes.Max())
             };
+        }    
+        // Normalize Features
+        static double[][] NormalizeFeatures(double[][] features)
+        {
+            int featureCount = features[0].Length; // Number of features per sample
+            double[] minValues = new double[featureCount];
+            double[] maxValues = new double[featureCount];
+
+            // Initialize min and max values
+            for (int i = 0; i < featureCount; i++)
+            {
+                minValues[i] = features.Min(row => row[i]);
+                maxValues[i] = features.Max(row => row[i]);
+            }
+
+            // Normalize each feature
+            return features.Select(row => row.Select((value, i) =>
+            {
+                double range = maxValues[i] - minValues[i];
+                return range == 0 ? 0 : (value - minValues[i]) / range; // Avoid division by zero
+            }).ToArray()).ToArray();
+        }
+
+        static double[] NormalizeFeature(double[] feature, double[][] referenceFeatures)
+        {
+            for(int i = 0; i < feature.Length; i++)
+            {
+                double minValues = referenceFeatures.Min();
+                double maxValues = referenceFeatures.Max();
+                feature[i] = (feature[i] - minValues) / (maxValues - minValues);
+            }
+
+            return feature;
         }
         public static int ConvertRatingTo3(int rating)
         {
@@ -270,7 +325,7 @@ namespace CBF_Testing.Application.Analysis
                     f1Scores.Add(0);
                     continue;
                 }
-                
+
                 double precision = (truePositives + 0.0) / (truePositives + falsePositives);
                 double recall = (truePositives + 0.0) / (truePositives + falseNegatives);
                 double f1 = 2 * (precision * recall) / (precision + recall);
@@ -343,10 +398,10 @@ namespace CBF_Testing.Application.Analysis
             double[][] res = new double[animeData.Count][];
 
             List<string> genresForDelete = new List<string>();
-            foreach(var genre in genres)
+            foreach (var genre in genres)
             {
                 bool flag = true;
-                for(int i = 0; i < animeData.Count; i++)
+                for (int i = 0; i < animeData.Count; i++)
                 {
                     if (animeData[i].Genres.FirstOrDefault(e => e.Name == genre) == null)
                     {
@@ -362,7 +417,7 @@ namespace CBF_Testing.Application.Analysis
             for (int i = 0; i < animeData.Count; i++)
             {
                 res[i] = new double[genres.Count];
-                foreach(var genre in animeData[i].Genres)
+                foreach (var genre in animeData[i].Genres)
                 {
                     var ind = genres.IndexOf(genre.Name);
                     if (ind >= 0)
